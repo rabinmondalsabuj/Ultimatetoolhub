@@ -21,6 +21,7 @@
             --secondary: #818cf8;
             --accent: #f472b6;
             --success: #10b981;
+            --warning: #fbbf24;
             --text: #f1f5f9;
             --text-dim: #94a3b8;
         }
@@ -90,6 +91,17 @@
         }
         .btn:hover { opacity: 0.9; transform: translateY(-2px); }
 
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 15px; border-radius: 10px; cursor: pointer; transition: 0.2s; }
+        .btn-outline:hover, .btn-outline.active { background: var(--primary); color: var(--bg); }
+
+        /* --- Image Preview Box --- */
+        .img-preview-container {
+            margin-top: 20px; padding: 15px; background: #0f172a; border-radius: 15px;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        #compressedPreview { max-width: 100%; max-height: 300px; border-radius: 10px; display: none; }
+
         /* --- Auth Modal --- */
         #authModal {
             display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
@@ -108,7 +120,6 @@
 
         @media (max-width: 600px) {
             .menu { display: none; }
-            .doc-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -118,6 +129,7 @@
         <div class="nav-container">
             <a href="#" class="logo">TOOLHUB PRO</a>
             <div class="menu">
+                <a href="#compress">Compress</a>
                 <a href="#age">Age</a>
                 <a href="#codes">QR/Bar</a>
                 <a href="#docs">PDF/Word</a>
@@ -135,8 +147,46 @@
         <section id="projectSection" class="section">
             <div class="card" style="border-color: var(--success);">
                 <h2 style="color: var(--success)"><i class="fa-solid fa-folder-open"></i> My Saved Projects</h2>
-                <div id="projectList">
-                    <!-- Projects appear here -->
+                <div id="projectList"></div>
+            </div>
+        </section>
+
+        <!-- IMAGE COMPRESSOR -->
+        <section id="compress" class="section">
+            <div class="card">
+                <h2 style="color: var(--warning)"><i class="fa-solid fa-file-image"></i> Image Compressor</h2>
+                <div class="grid">
+                    <div class="field">
+                        <label>Select Image</label>
+                        <input type="file" id="compressInput" accept="image/*" onchange="previewOriginalImage()">
+                    </div>
+                    <div class="field">
+                        <label>Target Format</label>
+                        <select id="compressMode">
+                            <option value="jpeg">JPG (Best for photos)</option>
+                            <option value="png">PNG (Lossless/Transparent)</option>
+                            <option value="webp">WebP (Modern/Smallest)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="field">
+                    <label>Compression Level (Quality)</label>
+                    <div class="btn-group">
+                        <button class="btn-outline" onclick="setCompression(0.9, this)">90% (High Qual)</button>
+                        <button class="btn-outline" onclick="setCompression(0.75, this)">75% (Good)</button>
+                        <button class="btn-outline active" onclick="setCompression(0.5, this)">50% (Balanced)</button>
+                        <button class="btn-outline" onclick="setCompression(0.25, this)">25% (Smallest)</button>
+                    </div>
+                </div>
+
+                <div id="compressStatus" class="img-preview-container" style="display:none">
+                    <div style="display:flex; gap:20px; font-size:0.85rem; color:var(--text-dim)">
+                        <span>Original: <b id="origSize">0 KB</b></span>
+                        <span style="color:var(--success)">Compressed: <b id="newSize">0 KB</b></span>
+                    </div>
+                    <img id="compressedPreview" alt="Preview">
+                    <button class="btn" style="width:100%; margin-top:10px;" onclick="downloadCompressed()"><i class="fa-solid fa-download"></i> Download Compressed Image</button>
                 </div>
             </div>
         </section>
@@ -167,7 +217,6 @@
                         <button class="btn" onclick="convertPdfToImg()">Capture</button>
                     </div>
                 </div>
-                <div id="docStatus" class="status"></div>
             </div>
         </section>
 
@@ -222,7 +271,7 @@
                 </div>
                 <div style="display:flex; gap:10px; margin:15px 0;">
                     <button class="btn" style="flex:1" onclick="convertUniToBijoy()"><i class="fa-solid fa-arrow-down"></i> To Bijoy (ANSI)</button>
-                    <button class="btn" style="flex:1" onclick="alert('Bijoy to Unicode logic requires full library. Unicode to Bijoy is now active!')"><i class="fa-solid fa-arrow-up"></i> To Avro</button>
+                    <button class="btn" style="flex:1" onclick="alert('Full library required for Bijoy to Unicode.')"><i class="fa-solid fa-arrow-up"></i> To Avro</button>
                 </div>
                 <div class="field">
                     <label>ANSI (Bijoy)</label>
@@ -249,7 +298,68 @@
     </div>
 
     <script>
-        // --- 1. USER AUTH SYSTEM (Local Storage) ---
+        // --- IMAGE COMPRESSOR LOGIC ---
+        let selectedCompression = 0.5;
+        let compressedDataUrl = "";
+
+        function setCompression(val, btn) {
+            selectedCompression = val;
+            document.querySelectorAll('.btn-outline').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            processCompression();
+        }
+
+        function previewOriginalImage() {
+            const file = document.getElementById('compressInput').files[0];
+            if (!file) return;
+            document.getElementById('origSize').innerText = (file.size / 1024).toFixed(2) + " KB";
+            processCompression();
+        }
+
+        function processCompression() {
+            const file = document.getElementById('compressInput').files[0];
+            const mode = document.getElementById('compressMode').value;
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    ctx.drawImage(img, 0, 0);
+
+                    // Note: PNG doesn't support quality reduction via toDataURL in many browsers.
+                    // Converting to JPEG/WebP or shrinking dimensions is the standard way.
+                    compressedDataUrl = canvas.toDataURL(`image/${mode}`, selectedCompression);
+                    
+                    const preview = document.getElementById('compressedPreview');
+                    preview.src = compressedDataUrl;
+                    preview.style.display = "block";
+                    document.getElementById('compressStatus').style.display = "flex";
+
+                    // Calculate new size from base64
+                    const head = `data:image/${mode};base64,`.length;
+                    const sizeInBytes = (compressedDataUrl.length - head) * 0.75;
+                    document.getElementById('newSize').innerText = (sizeInBytes / 1024).toFixed(2) + " KB";
+                };
+            };
+        }
+
+        function downloadCompressed() {
+            if(!compressedDataUrl) return;
+            const mode = document.getElementById('compressMode').value;
+            const link = document.createElement('a');
+            link.download = `compressed-image.${mode === 'jpeg' ? 'jpg' : mode}`;
+            link.href = compressedDataUrl;
+            link.click();
+        }
+
+        // --- PREVIOUS SYSTEMS ---
         let isLoginMode = true;
         let currentUser = JSON.parse(localStorage.getItem('loggedUser')) || null;
 
@@ -262,23 +372,16 @@
             isLoginMode = !isLoginMode;
             document.getElementById('authTitle').innerText = isLoginMode ? 'User Login' : 'Create Account';
             document.getElementById('authBtn').innerText = isLoginMode ? 'Login' : 'Sign Up';
-            document.getElementById('authToggleMsg').innerText = isLoginMode ? "Don't have an account?" : "Already have an account?";
         }
 
         function handleAuth() {
             const email = document.getElementById('authEmail').value;
             const pass = document.getElementById('authPass').value;
             if(!email || !pass) return alert("Fill all fields");
-
             let users = JSON.parse(localStorage.getItem('th_users')) || [];
-
             if(isLoginMode) {
                 const user = users.find(u => u.email === email && u.pass === pass);
-                if(user) {
-                    loginUser(user);
-                } else {
-                    alert("Invalid Credentials");
-                }
+                if(user) loginUser(user); else alert("Invalid Credentials");
             } else {
                 if(users.find(u => u.email === email)) return alert("Email exists");
                 const newUser = { email, pass, name: email.split('@')[0] };
@@ -317,20 +420,12 @@
             }
         }
 
-        // --- 2. PROJECT SAVING SYSTEM ---
         function saveProject(type, details) {
             if(!currentUser) return alert("Please Login to save projects!");
             let projects = JSON.parse(localStorage.getItem('th_projects')) || [];
-            const newProj = {
-                id: Date.now(),
-                user: currentUser.email,
-                type: type,
-                data: details,
-                date: new Date().toLocaleDateString()
-            };
-            projects.push(newProj);
+            projects.push({ id: Date.now(), user: currentUser.email, type, data: details, date: new Date().toLocaleDateString() });
             localStorage.setItem('th_projects', JSON.stringify(projects));
-            alert("Project Saved Successfully!");
+            alert("Project Saved!");
             loadProjects();
         }
 
@@ -338,61 +433,22 @@
             const list = document.getElementById('projectList');
             list.innerHTML = "";
             let projects = JSON.parse(localStorage.getItem('th_projects')) || [];
-            const userProjs = projects.filter(p => p.user === currentUser.email);
-            
-            if(userProjs.length === 0) list.innerHTML = "<p style='color:var(--text-dim)'>No projects saved yet.</p>";
-
-            userProjs.forEach(p => {
+            projects.filter(p => p.user === currentUser.email).forEach(p => {
                 const div = document.createElement('div');
                 div.className = "project-item";
-                div.innerHTML = `
-                    <div>
-                        <small style="color:var(--primary)">${p.date}</small>
-                        <div style="font-weight:bold">${p.type}</div>
-                        <div style="font-size:0.8rem; color:var(--text-dim)">${p.data}</div>
-                    </div>
-                    <button onclick="deleteProject(${p.id})" style="background:none; border:none; color:var(--accent); cursor:pointer"><i class="fa-solid fa-trash"></i></button>
-                `;
+                div.innerHTML = `<div><small>${p.date}</small><div><b>${p.type}</b></div><small>${p.data}</small></div>
+                <button onclick="deleteProject(${p.id})" style="color:var(--accent); background:none; border:none; cursor:pointer"><i class="fa-solid fa-trash"></i></button>`;
                 list.appendChild(div);
             });
         }
 
         function deleteProject(id) {
             let projects = JSON.parse(localStorage.getItem('th_projects')) || [];
-            projects = projects.filter(p => p.id !== id);
-            localStorage.setItem('th_projects', JSON.stringify(projects));
+            localStorage.setItem('th_projects', JSON.stringify(projects.filter(p => p.id !== id)));
             loadProjects();
         }
 
-        // --- 3. BANGLA CONVERTER ENGINE (Unicode to Bijoy) ---
-        function convertUniToBijoy() {
-            const unicodeText = document.getElementById('unicode-txt').value;
-            // Basic mapping logic for Unicode to Bijoy (SutonnyMJ compatible)
-            let out = unicodeText;
-            const map = {
-                'ক': 'ক', 'খ': 'খ', 'গ': 'গ', 'ঘ': 'ঘ', 'ঙ': 'ঙ',
-                'চ': 'চ', 'ছ': 'ছ', 'জ': 'জ', 'ঝ': 'ঝ', 'ঞ': 'ঞ',
-                'া': 'v', 'ি': 'w', 'ী': 'x', 'ু': 'y', 'ূ': 'z',
-                // This is a simplified demo of mapping. In a full app, you'd use a comprehensive map.
-            };
-            
-            // Note: Full Bijoy conversion requires handling "Kar" positioning (e.g., 'i' comes before consonant)
-            // This placeholder shows the mechanism.
-            document.getElementById('ansi-txt').value = unicodeToBijoyLogic(unicodeText);
-        }
-
-        function unicodeToBijoyLogic(str) {
-            // This is a standard simplified conversion pattern
-            if (!str) return "";
-            let res = str;
-            res = res.replace(/ু/g, "y");
-            res = res.replace(/ি/g, "w");
-            res = res.replace(/া/g, "v");
-            res = res.replace(/্/g, "&");
-            return res; 
-        }
-
-        // --- 4. PREVIOUS TOOLS LOGIC (PDF/QR/Age) ---
+        // --- AGE, PDF, BANGLA LOGIC ---
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
         const { jsPDF } = window.jspdf;
 
@@ -404,7 +460,7 @@
                 const result = await mammoth.extractRawText({arrayBuffer: e.target.result});
                 const doc = new jsPDF();
                 doc.text(doc.splitTextToSize(result.value, 180), 10, 10);
-                doc.save("word-converted.pdf");
+                doc.save("word-to-pdf.pdf");
             };
             reader.readAsArrayBuffer(file);
         }
@@ -422,8 +478,8 @@
                     text += content.items.map(s => s.str).join(" ") + "\n";
                 }
                 const link = document.createElement("a");
-                link.href = URL.createObjectURL(new Blob([text], { type: "application/msword" }));
-                link.download = "pdf-extracted.doc";
+                link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+                link.download = "extracted-text.txt";
                 link.click();
             };
             reader.readAsArrayBuffer(file);
@@ -433,20 +489,19 @@
             const files = document.getElementById('imgToPdfInput').files;
             if (files.length === 0) return;
             const doc = new jsPDF();
-            let processed = 0;
-            for (let i = 0; i < files.length; i++) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
+            let count = 0;
+            for (let f of files) {
+                const r = new FileReader();
+                r.onload = (e) => {
                     const img = new Image();
                     img.src = e.target.result;
                     img.onload = () => {
-                        if (processed > 0) doc.addPage();
+                        if (count > 0) doc.addPage();
                         doc.addImage(img, 'JPEG', 10, 10, 180, 150);
-                        processed++;
-                        if (processed === files.length) doc.save("images.pdf");
+                        if (++count === files.length) doc.save("merged.pdf");
                     }
                 };
-                reader.readAsDataURL(files[i]);
+                r.readAsDataURL(f);
             }
         }
 
@@ -458,7 +513,7 @@
                 const pdf = await pdfjsLib.getDocument(new Uint8Array(this.result)).promise;
                 const page = await pdf.getPage(1);
                 const canvas = document.createElement('canvas');
-                const viewport = page.getViewport({ scale: 2 });
+                const viewport = page.getViewport({ scale: 1.5 });
                 canvas.height = viewport.height; canvas.width = viewport.width;
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
                 const link = document.createElement('a');
@@ -477,7 +532,7 @@
             if (m < 0) { y--; m += 12; }
             const res = document.getElementById('ageRes');
             res.style.display = 'block';
-            res.innerText = `${y} Years, ${m} Months, ${d} Days`;
+            res.innerText = `${y} Y, ${m} M, ${d} D`;
         }
 
         function doGen() {
@@ -508,6 +563,11 @@
             const canvas = document.querySelector(document.getElementById('codeType').value === 'qr' ? '#qr-out canvas' : '#bar-out');
             doc.addImage(canvas.toDataURL(), 'PNG', 15, 30, 80, 80);
             doc.save("code.pdf");
+        }
+
+        function convertUniToBijoy() {
+            const str = document.getElementById('unicode-txt').value;
+            document.getElementById('ansi-txt').value = str.replace(/ু/g, "y").replace(/ি/g, "w").replace(/া/g, "v");
         }
 
         window.onload = () => {
